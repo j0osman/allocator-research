@@ -19,6 +19,7 @@ constexpr size_t POOL_SIZE = 1'000'000;
 
 using Clock = std::chrono::high_resolution_clock;
 
+//Duration measuring function
 template<typename F>
 double measure(F&& func){
 	auto start = Clock::now();
@@ -29,6 +30,7 @@ double measure(F&& func){
 	return diff.count();
 }
 
+//Single threaded new/delete benchmark
 double benchmark_new_delete(){
 	return measure([]{
 		volatile int sink = 0;
@@ -41,6 +43,7 @@ double benchmark_new_delete(){
 	});
 }
 
+//Single threaded pool benchmark
 double benchmark_pool(ObjectPool<TestObject>& pool){
 	return measure([&]{
 		volatile int sink = 0;
@@ -54,6 +57,7 @@ double benchmark_pool(ObjectPool<TestObject>& pool){
 	});
 }
 
+//Multithreaded new/delete benchmark
 double benchmark_new_delete_mt(){
     return measure([]{
 
@@ -80,6 +84,7 @@ double benchmark_new_delete_mt(){
     });
 }
 
+//Multithreaded pool benchmark
 double benchmark_pool_mt(ObjectPool<TestObject>& pool){
     return measure([&]{
 

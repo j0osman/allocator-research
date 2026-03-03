@@ -73,7 +73,7 @@ class ObjectPool{
 			//change union object back to pointer
 			Node* node = reinterpret_cast<Node*>(obj);
 
-			//reinsert node in freelist and point free_head
+			//reinsert node in freelist and point to free_head
 			node->next = free_head;
 			free_head = node;
 		}
