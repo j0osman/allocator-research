@@ -49,16 +49,23 @@ class ObjectPool{
 		//Acquire method
 		T* acquire(){
 
+			//Get freehead uint64 packed pointer
 			uint64_t old_head = free_head.load(std::memory_order_acquire);
 
+			//Compare and Swap Loop
 			while(true){
+
+				//Get memory address from old_head
 				Node* node = unpack_ptr(old_head);
 				if(!node) return nullptr;
 
+				//Get tag from old_head
 				uint16_t tag = unpack_tag(old_head);
 
+				//Increment tag
 				uint64_t new_head = pack(node->next, tag+1);
 
+				//CAS check to address true sharing
 				if(free_head.compare_exchange_weak(
 						old_head, new_head,
 						std::memory_order_acq_rel,
@@ -66,29 +73,38 @@ class ObjectPool{
 				{
 					return new (&node->obj) T();
 				}
-
 			}
-			
 		}
 
 
 		//Release method
 		void release(T* obj){
 
+			//Destruct object
 			obj->~T();
 
+			//Reinterpret object as pointer
 			Node* node = reinterpret_cast<Node*>(obj);
 
+			//Get freehead uint64 packed pointer
 			uint64_t old_head = free_head.load(std::memory_order_acquire);
 
+			//Compare and Swap Loop
 			while(true){
+
+				//Get address from old_head
 				Node* head_ptr = unpack_ptr(old_head);
+
+				//Get tag from old_head
 				uint16_t tag = unpack_tag(old_head);
 
+				//Point current node to old_head address
 				node->next = head_ptr;
 
+				//Pack updated node with incremented tag
 				uint64_t new_head = pack(node, tag+1);
 
+				//CAS check
 				if(free_head.compare_exchange_weak(
 							old_head, new_head,
 							std::memory_order_acq_rel,
@@ -109,15 +125,18 @@ class ObjectPool{
 		static constexpr uint64_t PTR_MASK = (1ULL<<48)-1;
 		static constexpr uint64_t TAG_SHIFT = 48;
 
+		//Pointer packing function
 		static uint64_t pack(Node* ptr, uint16_t tag){
 			uint64_t p = reinterpret_cast<uint64_t>(ptr);
 			return (static_cast<uint64_t>(tag) << TAG_SHIFT) | (p & PTR_MASK);
 		}
 
+		//Pointer address unpacking function
 		static Node* unpack_ptr(uint64_t value){
 			return reinterpret_cast<Node*>(value & PTR_MASK);
 		}
 
+		//Pointer tag unpacking function
 		static uint16_t unpack_tag(uint64_t value){
 			return static_cast<uint16_t>(value >> TAG_SHIFT);
 		}
