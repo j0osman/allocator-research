@@ -13,29 +13,41 @@ A thread-safe, header-only C++23 Object Pool implementation designed to eliminat
 
 The pool operates on a **Freelist** principle. Upon construction, a single large block of raw memory is allocated. This block is partitioned into a linked list of "nodes."
 
-
-
-* **When free**: The node acts as a pointer to the next available slot.
-* **When acquired**: The node is "reincarnated" into a live object using **Placement New**.
+* **When free**: The node acts as a pointer to the next available slot.  
+* **When acquired**: The node is "reincarnated" into a live object using **Placement New**.  
 * **When released**: The object's destructor is called manually, and the node is prepended back to the freelist.
 
 ## 📊 Benchmarks
 
-Measured on an 8-thread system using `g++ -O2`.
+Measured on an 8-thread system using `g++ -O2 -std=c++23`.
 
-| Test Case | Standard `new`/`delete` | `ObjectPool<T>` | Performance Delta |
-| :--- | :--- | :--- | :--- |
-| **Single Thread** | 0.1149s | 0.0907s | **+21% Faster** |
-| **Multi-Thread (8)** | 0.1732s | 10.2785s | **Contention Bottleneck** |
+### Single-Threaded Performance
+
+| Test Case | Time (s) | Throughput (ops/sec) |
+| :--- | :--- | :--- |
+| **Standard `new`/`delete`** | 0.085243 | 58,656,034 |
+| **ObjectPool<T>** | 0.088398 | 56,562,397 |
+
+> **Observation:** In single-threaded usage, the pool performs nearly on par with the standard heap allocator.
+
+### Multi-Threaded Performance (8 Threads)
+
+| Test Case | Time (s) | Throughput (ops/sec) |
+| :--- | :--- | :--- |
+| **Standard `new`/`delete`** | 0.196831 | 203,220,022 |
+| **ObjectPool<T>** | 13.757565 | 2,907,491 |
+
+> **Observation:** The mutex-based pool suffers from severe contention under heavy multi-threaded load, resulting in a drastic throughput drop.
 
 ### The "Mutex Tax" Analysis
-While the pool outperforms the standard heap in single-threaded scenarios, the multi-threaded benchmark reveals a significant bottleneck. This is due to **Mutex Contention**:
-* The standard `new` allocator (e.g., glibc ptmalloc) uses multiple arenas/thread-local caches to avoid locking.
-* This implementation uses a single `std::mutex`, forcing 8 threads to queue for access to the `free_head`. 
 
-*Note: Work is currently underway to implement a **Lock-Free (Atomic CAS)** version to resolve this contention.*
+* The single `std::mutex` protecting the freelist becomes a bottleneck with multiple threads.  
+* Standard `new`/`delete` implementations leverage multiple arenas and thread-local caches to avoid such contention.  
+
+*Note:* A **Lock-Free (Atomic CAS)** version is planned to eliminate this bottleneck and improve scalability.
 
 ## 💻 Usage
+
 ```bash
 g++ -O2 -std=c++23 benchmark.cpp -o benchmark -pthread
 ./benchmark
