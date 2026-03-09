@@ -29,10 +29,6 @@ A research repository exploring **custom C++ memory allocator designs** and thei
    * Threads mostly allocate from their local freelist, drastically reducing contention.  
    * Best multi-threaded throughput among the three designs.
 
-4. **Thread-Local Multi-Slab Allocator** *(planned/future)*  
-   * Allocates memory in multiple slabs per thread to minimize fragmentation.  
-   * Designed for extremely high allocation rates with predictable memory usage.
-
 ---
 
 ## 📊 Benchmarks
@@ -99,7 +95,6 @@ g++ -O2 -std=c++23 benchmark.cpp -o benchmark -pthread
 
 ## ⚡ Future Work
 
-* Implement the **Thread-Local Multi-Slab Allocator** for high-throughput, fragmented workloads.  
 * Explore hybrid **lock-free + TLS batching** approaches for extreme concurrency.  
 * Add **latency histograms** and **contention profiling** for deeper performance insights.
 
