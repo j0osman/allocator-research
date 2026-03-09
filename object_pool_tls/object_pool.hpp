@@ -5,12 +5,14 @@
 #include <new>
 #include <stdexcept>
 
+//---------------------------- PoolNode -------------------------------------
 template<typename T>
 union PoolNode {
 	T object;
 	PoolNode* next;
 };
 
+//---------------------------- Thread-Local Aware Object Pool -------------------------------------
 template<typename T>
 class ObjectPool{
 	public:
@@ -45,6 +47,7 @@ class ObjectPool{
 		//Acquire method
 		T* acquire(){
 
+			//get free_head from tls free list if available
 			if(tls_free_head){
 				Node* node = tls_free_head;
 				tls_free_head = node->next;
@@ -52,6 +55,8 @@ class ObjectPool{
 				return new (&node->object) T();
 			}
 
+			//global free list fallback
+			
 			refill_tls();
 
 			if(!tls_free_head) return nullptr;
@@ -105,6 +110,7 @@ class ObjectPool{
 
 			std::lock_guard<std::mutex> lock(global_mtx);
 
+			//get nodes from global freelist in batches
 			while(global_head && count < TLS_BATCH){
 				Node* node = global_head;
 				global_head = node->next;
@@ -124,6 +130,7 @@ class ObjectPool{
 
 			std::lock_guard<std::mutex> lock(global_mtx);
 
+			//flush extra nodes back to global free list
 			while(tls_free_head && count < TLS_BATCH){
 				Node* node = tls_free_head;
 				tls_free_head = node->next;
