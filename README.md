@@ -24,10 +24,9 @@ A research repository exploring **custom C++ memory allocator designs** and thei
    * Eliminates mutex bottlenecks, providing better scalability in multi-threaded scenarios.  
    * Slight overhead in single-threaded mode due to CAS operations.
 
-3. **Thread-Local Freelist Object Pool (TLS/Mutex Hybrid)**  
-   * Combines **thread-local caches** with a global mutex-protected pool.  
-   * Threads mostly allocate from their local freelist, drastically reducing contention.  
-   * Best multi-threaded throughput among the three designs.
+3. **Enterprise Thread-Local Freelist Object Pool (Available via Commercial Licensing)**  
+   * Combines **thread-local caches** with a global mutex-protected pool. 
+   * Best multi-threaded throughput among the three designs with 1.8 billion ops/sec.
 
 ---
 
@@ -69,33 +68,9 @@ Benchmarks measured on an 8-thread system using `g++ -O2 -std=c++23`. Metrics in
 
 ## 💻 Usage
 
-Each allocator is **header-only**. Include the corresponding header in your project:
-
-```cpp
-#include "mutex_pool.hpp"
-#include "lockfree_pool.hpp"
-#include "tls_pool.hpp"
-```
-
-## 💻 Usage
-
 Compile benchmark tests:
 
 ```bash
 g++ -O2 -std=c++23 benchmark.cpp -o benchmark -pthread
 ./benchmark
 ```
-
-## 📚 Lessons Learned
-
-* Thread-local storage can dramatically reduce synchronization overhead in multi-threaded allocators.  
-* Lock-free designs are conceptually elegant but may not always outperform TLS approaches due to CAS and cache-coherency costs.  
-* Mutex-based pools remain useful for simpler workloads or when portability and correctness are more important than maximum throughput.  
-* Benchmarking is essential—allocator performance varies drastically depending on thread count, access patterns, and object size.
-
-## ⚡ Future Work
-
-* Explore hybrid **lock-free + TLS batching** approaches for extreme concurrency.  
-* Add **latency histograms** and **contention profiling** for deeper performance insights.
-
-This repository provides a **practical guide and reference** for anyone implementing high-performance C++ memory allocators and evaluating their behavior under contention.
