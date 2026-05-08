@@ -1,76 +1,291 @@
 # Allocator Research (C++)
 
-A research repository exploring **custom C++ memory allocator designs** and their performance under single-threaded and multi-threaded workloads. The goal is to understand how allocator design choices affect **throughput, latency, cache behavior, and contention**.
+A research repository exploring custom C++ allocator designs and their behavior under low-latency, multi-threaded workloads.
+
+The project focuses on:
+- allocator architecture
+- contention reduction
+- cache locality
+- deterministic latency behavior
+- scalability under concurrent load
+
+Implementations are benchmarked using:
+- latency percentiles
+- throughput
+- multi-threaded stress testing
+- hardware cache counters
 
 ---
 
-## 🏁 Goal
+# 🎯 Goals
 
-* Investigate different allocator strategies for high-performance, multi-threaded applications.
-* Compare mutex-based, lock-free, and thread-local approaches to memory management.
-* Quantify performance trade-offs with micro-benchmarks and stress tests.
+This repository exists to study how allocator design choices affect:
 
----
+- allocation latency
+- tail latency stability
+- cache behavior
+- synchronization overhead
+- scalability under contention
+- memory reuse efficiency
 
-## ⚙️ Implementations
+The project compares:
+- mutex-based freelists
+- lock-free freelists
+- thread-local allocator designs
 
-1. **Mutex Freelist Object Pool**  
-   * Thread-safe via a single `std::mutex`.  
-   * Simple, zero-metadata per-object freelist using a union.  
-   * Good single-threaded performance; suffers under multi-threaded contention.  
-
-2. **Lock-Free Freelist (64-bit Packed Pointer CAS)**  
-   * Uses atomic operations and a 64-bit **tagged pointer** to prevent ABA issues.  
-   * Eliminates mutex bottlenecks, providing better scalability in multi-threaded scenarios.  
-   * Slight overhead in single-threaded mode due to CAS operations.
-
-3. **Enterprise Thread-Local Freelist Object Pool (Available via Commercial Licensing)**  
-   * Combines **thread-local caches** with a global mutex-protected pool. 
-   * Best multi-threaded throughput among the three designs with 1.8 billion ops/sec.
+while keeping implementation complexity and memory overhead practical.
 
 ---
 
-## 📊 Benchmarks
+# ⚙️ Implementations
 
-Benchmarks measured on an 8-thread system using `g++ -O2 -std=c++23`. Metrics include **time**, **throughput**, and scaling behavior.
+## 1. Mutex Freelist Object Pool
 
-### Single-Threaded Performance
+A simple thread-safe slab allocator using a single global mutex.
 
-| Allocator | Time (s) | Throughput (ops/sec) | Notes |
-| :--- | :--- | :--- | :--- |
-| Mutex Pool | 0.0907 | 56,562,397 | Slightly faster than standard heap in some cases |
-| Lock-Free Pool | 0.1052 | 47,518,088 | CAS overhead visible |
-| TLS/Mutex Hybrid | 0.0109 | 460,501,387 | TLS batching provides massive speedup |
-| `new/delete` | 0.0852 | 58,656,034 | Baseline |
+### Characteristics
 
-### Multi-Threaded Performance (8 Threads)
+- contiguous slab allocation
+- zero per-object metadata
+- straightforward implementation
+- predictable memory layout
 
-| Allocator | Time (s) | Throughput (ops/sec) | Notes |
-| :--- | :--- | :--- | :--- |
-| Mutex Pool | 10.2785 | 2,907,491 | Contention bottleneck on mutex |
-| Lock-Free Pool | 8.9827 | 4,453,029 | Better scaling than mutex, still limited by CAS contention |
-| TLS/Mutex Hybrid | 0.0211 | 1,893,107,341 | Dramatic improvement via per-thread caching |
-| `new/delete` | 0.1968 | 203,220,022 | Standard allocator baseline |
+### Tradeoffs
 
-> **Observation:** Thread-local caching provides the most significant gains for multi-threaded workloads. Lock-free design mitigates the mutex bottleneck but is still slower than TLS batching under high thread counts.
+- performs reasonably in single-threaded workloads
+- suffers under heavy contention
+- mutex becomes serialization bottleneck
 
 ---
 
-## 🔑 Key Findings
+## 2. Lock-Free Freelist Object Pool
 
-1. **Mutex-based pools** are simple and effective for single-threaded or lightly-threaded workloads but scale poorly with contention.  
-2. **Lock-free pools** remove the mutex but introduce CAS overhead. They improve scalability but are still limited under extreme contention.  
-3. **TLS/mutex hybrid pools** achieve the best throughput by keeping most allocations and releases local to each thread, only touching the global pool in batches.  
-4. **Cache locality** matters: all slab-based designs outperform `new/delete` in predictable memory access patterns due to contiguous memory layouts.  
-5. For **highly concurrent applications**, combining thread-local caching with a global fallback pool is often the optimal trade-off between speed, memory efficiency, and implementation complexity.
+A lock-free freelist allocator using atomic CAS operations and tagged pointers to mitigate ABA issues.
+
+### Characteristics
+
+- mutex-free allocation path
+- 64-bit packed tagged pointer freelist
+- improved scalability over global mutex design
+
+### Tradeoffs
+
+- additional CAS overhead
+- increased implementation complexity
+- contention still visible under extreme thread pressure
 
 ---
 
-## 💻 Usage
+## 3. TLS Freelist Object Pool
 
-Compile benchmark tests:
+A hybrid allocator combining:
+- thread-local freelists
+- batched global refill
+- slab allocation
+- mutex-protected fallback storage
+
+### Characteristics
+
+- allocation fast path avoids synchronization entirely
+- batch refill amortizes mutex overhead
+- strong cache locality due to slab reuse
+- deterministic low-latency allocation behavior
+- alignment-safe allocations
+- cross-thread release support
+
+### Design Philosophy
+
+This allocator prioritizes:
+- latency determinism
+- contention avoidance
+- cache efficiency
+- scalable throughput
+
+rather than maximizing raw synthetic benchmark numbers.
+
+---
+
+# 🧠 Architectural Findings
+
+The experiments in this repository demonstrate several recurring allocator behaviors:
+
+## Mutex Contention Dominates Quickly
+
+Global mutex designs degrade sharply once multiple threads begin competing for the freelist.
+
+Even simple allocation patterns can become serialization bottlenecks under contention.
+
+---
+
+## Lock-Free Does Not Mean Contention-Free
+
+Lock-free structures eliminate mutex blocking but still incur:
+- cache coherency traffic
+- CAS retry overhead
+- atomic synchronization costs
+
+Under heavy contention, atomic pressure becomes the new bottleneck.
+
+---
+
+## Thread-Local Allocation Dramatically Improves Stability
+
+Keeping allocation/release operations local to each thread:
+- minimizes synchronization
+- reduces cacheline bouncing
+- improves cache locality
+- compresses latency tails significantly
+
+The TLS allocator consistently demonstrated:
+- lower p50 latency
+- tighter p99/p999 distributions
+- reduced L3 cache misses
+- stronger multi-threaded scaling
+
+---
+
+# 📊 Benchmark Summary
+
+Benchmarks performed on a pinned multi-core system using:
 
 ```bash
-g++ -O2 -std=c++23 benchmark.cpp -o benchmark -pthread
+g++ -O3 -std=c++23
+```
+
+Metrics collected:
+- latency percentiles
+- throughput
+- hardware cache counters
+
+---
+
+## Single-Threaded Results
+
+| Allocator | p50 | p99 | Throughput |
+|---|---|---|---|
+| Mutex Pool | Moderate | Stable | Moderate |
+| Lock-Free Pool | Higher | Stable | Moderate |
+| TLS Pool | Lowest | Tightest | Highest |
+| `new/delete` | Moderate | Variable | Moderate |
+
+### Observations
+
+- TLS freelists reduced median allocation latency substantially
+- slab locality reduced allocator cache misses
+- deterministic timing improved significantly versus heap allocation
+
+---
+
+## Multi-Threaded Results
+
+| Allocator | Contention Behavior | Scaling |
+|---|---|---|
+| Mutex Pool | Severe mutex contention | Poor |
+| Lock-Free Pool | Atomic contention | Moderate |
+| TLS Pool | Minimal fast-path synchronization | Strong |
+| `new/delete` | General-purpose allocator overhead | Moderate |
+
+### Observations
+
+- TLS batching avoided most synchronization entirely
+- lock-free design scaled better than mutex-based freelists
+- allocator locality strongly influenced tail latency stability
+
+---
+
+# 🧪 Validation & Testing
+
+The repository includes extensive unit and stress testing covering:
+
+- allocation correctness
+- destructor symmetry
+- pool exhaustion handling
+- node reuse behavior
+- multi-threaded stress tests
+- alignment guarantees
+- cross-thread frees
+- multiple allocator instances
+- concurrent exhaustion scenarios
+- zero-sized type support
+
+Tests validate:
+- memory lifecycle correctness
+- allocator reuse integrity
+- thread safety assumptions
+- deterministic object construction/destruction behavior
+
+Example test output:
+
+```text
+==== ObjectPool Unit Tests ====
+
+✓ basic allocate
+✓ capacity
+✓ reuse
+✓ bulk allocate
+✓ multithread
+✓ alignment
+✓ lifecycle
+✓ cross-thread free
+✓ multiple pools same thread
+✓ multithread exhaustion
+✓ empty type
+
+All tests passed.
+```
+
+---
+
+# 💻 Build
+
+## Benchmarks
+
+```bash
+g++ -O3 -std=c++23 benchmark.cpp -pthread -o benchmark
 ./benchmark
 ```
+
+## Unit Tests
+
+```bash
+g++ -O3 -std=c++23 tests.cpp -pthread -o tests
+./tests
+```
+
+---
+
+# 📌 Research Focus
+
+This repository is primarily focused on studying allocator behavior in systems where:
+- latency matters
+- contention matters
+- allocation patterns are repetitive
+- cache locality is important
+
+Potential application domains include:
+- trading systems
+- ECS/game engines
+- simulation systems
+- packet processing
+- networking infrastructure
+- real-time systems
+
+---
+
+# ⚠️ Safety Notes
+
+These allocators manage raw slab memory directly.
+
+Users must:
+- avoid use-after-free access
+- avoid retaining pointers after pool destruction
+- avoid releasing objects into incompatible pools
+- manage allocator lifetimes carefully
+
+Improper memory ownership handling may result in undefined behavior.
+
+---
+
+# 📄 License
+
+MIT License
